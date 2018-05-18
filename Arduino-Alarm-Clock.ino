@@ -6,8 +6,7 @@
 #include "SSD1306AsciiWire.h"
 #include <DS1307RTC.h>
 
-//char daysOfTheWeek[8][10] = {"", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-
+s//char daysOfTheWeek[8][10] = {"", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 class NextAlarm {
   private:
@@ -37,7 +36,6 @@ NextAlarm::NextAlarm() {
   newAlarm = prevAlarm + interval;
 }
 NextAlarm::NextAlarm(int x) {
-
 
   prevAlarm = now();
   interval = x;
@@ -89,12 +87,12 @@ bool NextAlarm::alarmReached() {
 }
 
 void NextAlarm::makeName() {
-  itoa(hour(prevAlarm),fileName,10);
-  itoa(minute(prevAlarm),fileName+strlen(fileName),10);
+  itoa(hour(prevAlarm), fileName, 10);
+  itoa(minute(prevAlarm), fileName + strlen(fileName), 10);
   strcat(fileName, "_");
   itoa(interval, fileName + strlen(fileName), 10);
-strcat(fileName,".txt");
-  
+  strcat(fileName, ".txt");
+
   sprintf(alarmName, "%li", prevAlarm);
   strcat(alarmName, "_");
   // strcat(alarmName,interval);
@@ -115,8 +113,6 @@ String NextAlarm::toString() {
 
 time_t t;
 NextAlarm asdf;
-
-
 #define I2C_ADDRESS 0x3C
 SSD1306AsciiWire oled;
 
@@ -147,16 +143,11 @@ void setup() {
   Wire.begin();
   Serial.begin(9600);
 
-
-
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
   oled.begin(&Adafruit128x64, I2C_ADDRESS);  // initialize with the I2C addr 0x3C (for the 128x64)
   oled.set400kHz();
   oled.setFont(Adafruit5x7);
-
   oled.clear();
-
-
 
   setSyncProvider(RTC.get);   // the function to get the time from the RTC
   if (timeStatus() != timeSet)
@@ -193,8 +184,6 @@ void setup() {
   //alarm = now();
   // alarm += 2 * SECS_PER_MIN;
 }
-
-
 
 void loop() {
   // put your main code here, to run repeatedly:
@@ -236,7 +225,6 @@ void loop() {
     oled.print("0");
   oled.print(second(asdf.getNextAlarm()));
   oled.clearToEOL();
-  //oled.println((t - alarm) / SECS_PER_MIN);
 
   digitalWrite(blue, false);
   digitalWrite(yellow, false);
@@ -254,26 +242,19 @@ void loop() {
       SD.remove(asdf.getFileName());
 
       asdf.advanceToNext();
-      
+
       File dataFile = SD.open(asdf.getFileName(), FILE_WRITE);
       if (dataFile) {
         dataFile.println(asdf.toString());
-        //dataFile.close();
+        
       } else {
         Serial.print("can't ");
         Serial.println(asdf.getFileName());
-        
-
-
 
       }
       dataFile.close();
     }
   }
-
-
-  // delay(300);
-
 }
 
 
