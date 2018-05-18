@@ -1,12 +1,11 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <SD.h>
-
 #include "SSD1306Ascii.h"
 #include "SSD1306AsciiWire.h"
 #include <DS1307RTC.h>
 
-s//char daysOfTheWeek[8][10] = {"", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+//char daysOfTheWeek[8][10] = {"", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 class NextAlarm {
   private:
