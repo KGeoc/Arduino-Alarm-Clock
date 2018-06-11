@@ -12,7 +12,7 @@
 class NextAlarm {
   private:
     time_t prevAlarm;
-    int interval;
+    unsigned long interval;
     time_t newAlarm;
     char alarmName[30];
     char fileName[12];
@@ -21,9 +21,9 @@ class NextAlarm {
     NextAlarm();
     NextAlarm(int x);
     NextAlarm(int x, String y);
-    NextAlarm(time_t x, time_t y, int z, String a, char b[]);
+    NextAlarm(time_t x, time_t y, unsigned long z, char a[], char b[]);
     time_t getNextAlarm();
-    int getInterval();
+    time_t getInterval();
     char * getAlarmName();
     char * getFileName();
     bool alarmReached();
@@ -55,12 +55,12 @@ NextAlarm::NextAlarm(int x, String y) {
   interval = x;
   newAlarm = prevAlarm + interval;
 }
-NextAlarm::NextAlarm(time_t x, time_t y, int z, String a, char b[]) {
-  newAlarm = y;
-  prevAlarm = x;
+NextAlarm::NextAlarm(time_t x, time_t y, unsigned long z, char a[], char b[]) {
+  newAlarm = x;
+  prevAlarm = y;
   interval = z;
-  a.toCharArray(alarmName, 30);
-  //    strcpy(alarmName, a);
+  //  a.toCharArray(alarmName, 30);
+  strcpy(alarmName, a);
   strcpy(fileName, b);
 }
 
@@ -68,7 +68,7 @@ time_t NextAlarm::getNextAlarm() {
   return newAlarm;
 }
 
-int NextAlarm::getInterval() {
+unsigned long NextAlarm::getInterval() {
   return interval;
 }
 char * NextAlarm::getAlarmName() {
@@ -80,7 +80,7 @@ char * NextAlarm::getFileName() {
 }
 
 bool NextAlarm::alarmReached() {
-  if (newAlarm < now()) {
+  if (newAlarm <= now()) {
     return true;
   }
   return false;
@@ -94,17 +94,13 @@ void NextAlarm::makeFileName() {
   itoa(interval, fileName + strlen(fileName), 10);
   strcat(fileName, ".txt");
 
-  /* sprintf(alarmName, "%li", prevAlarm);
-    strcat(alarmName, "_");
-    // strcat(alarmName,interval);
-    itoa(interval, alarmName + strlen(alarmName), 10);
-  */
+
 }
 
 void NextAlarm::advanceToNext() {
   while (alarmReached()) {
     prevAlarm += interval;
-    newAlarm = prevAlarm + interval;
+    newAlarm += interval;
   }
   makeFileName();
 }
@@ -198,58 +194,81 @@ void loadFile() {
   // rewind may be neccessary in your application.
   sd.vwd()->rewind();
   while (file.openNext(sd.vwd(), O_READ)) {
-    file.getName(line, 25);
-    Serial.println(line);
+    file.getName(line, 12);
     if (file.isDir()) {
       // do nothing for directories
     }
     else {
 
       if (!file.isOpen()) {
-        Serial.println("demoFgets");
+        Serial.println("No File Open");
       }
       file.fgets(line, sizeof(line));
 
       time_t tempLowest = atol(line);
-      Serial.print("tempLowest: ");
-      Serial.println(tempLowest);
-      Serial.println(line);
+      /*     Serial.print("tempLowest: ");
+           Serial.println(tempLowest);
+           Serial.println(line);*/
 
       if (lowestTime >  tempLowest)
       {
         lowestTime = tempLowest;
-        Serial.println("New low");
-        Serial.println(lowestTime);
+        //     Serial.println("New low");
+        //      Serial.println(lowestTime);
 
         file.fgets(line, sizeof(line));
 
         time_t hold = atol(line);
         file.fgets(line, sizeof(line));
-        long until = atol(line);
+        unsigned long until = atol(line);
         char later[30];
         file.fgets(later, sizeof(later));
         file.getName(line, 25);
-        ///this needs to be separated for some reason, I'll try and fix it later
-        Serial.println(line);
-        Serial.println(later);
-        Serial.println(hold);
-        Serial.println(until);
-        Serial.println();
-        asdf = NextAlarm(lowestTime, hold, until, later, line);
+        /*       Serial.println(line);
+               Serial.println(later);
+               Serial.println(hold);
+               Serial.println(until);
+               Serial.println();
+        */     asdf = NextAlarm(lowestTime, hold, until, later, line);
       }
       else {
-        Serial.println("this was not lower");
+        //        Serial.println("this was not lower");
       }
       /*   while ((n = file.fgets(line, sizeof(line))) > 0) {
            Serial.print(line);
 
          }*/
     }
-    Serial.println();
+
     file.close();
   }
 }
 
+void makeNewFile() {
+  if (sd.exists(asdf.getFileName())) {
+    if (sd.remove(asdf.getFileName()))
+    {
+      Serial.println("File " + String(asdf.getFileName() ) + " removed");
+    }
+
+  }
+  else {
+    Serial.println("File " + String(asdf.getFileName()) + " file doesn't exist");
+  }
+
+  asdf.advanceToNext();
+
+  File dataFile = sd.open(asdf.getFileName(), FILE_WRITE);
+  if (dataFile) {
+    dataFile.println(asdf.toString());
+
+  } else {
+    Serial.print("can't ");
+    Serial.println(asdf.getFileName());
+
+  }
+  dataFile.close();
+}
 ///////////////
 
 
@@ -294,13 +313,15 @@ void loop() {
   oled.print(second(asdf.getNextAlarm()));
   oled.clearToEOL();
   oled.println();
-  oled.println(asdf.getAlarmName());
 
   digitalWrite(blue, false);
   digitalWrite(yellow, false);
   digitalWrite(red, false);
   if (asdf.alarmReached()) {
     if (firstAlarmInstance) {
+      oled.clear(0, oled.displayHeight(), oled.row() + 1, oled.displayRows());
+
+
 
       firstAlarmInstance = false;
     }
@@ -322,43 +343,16 @@ void loop() {
   if (digitalRead(rightDir)) {
     printMemory();
 
-
-
     digitalWrite(red, true);
     if (asdf.alarmReached()) {
-      if (sd.exists(asdf.getFileName())) {
-        if (sd.remove(asdf.getFileName()))
-        {
-          Serial.println("File " + String(asdf.getFileName() ) + " removed");
-        }
-        else {
-          Serial.println("File " + String(asdf.getFileName()) + " still here... the bastard");
-        }
-      }
-      else {
-        Serial.println("File " + String(asdf.getFileName()) + " file doesn't exist");
-      }
-
-      asdf.advanceToNext();
-
-      File dataFile = sd.open(asdf.getFileName(), FILE_WRITE);
-      if (dataFile) {
-        dataFile.println(asdf.toString());
-
-      } else {
-        Serial.print("can't ");
-        Serial.println(asdf.getFileName());
-
-      }
-      dataFile.close();
+      makeNewFile();
 
       loadFile();
+      firstAlarmInstance = true;
     }
   }
 
-  //oled.print("pos " + String(oled.col()) + " " + String(oled.row()));
-  //oled.clearToEOL();
-  //oled.clear(0, 64, oled.row(), 32);
+
 
 
 }
