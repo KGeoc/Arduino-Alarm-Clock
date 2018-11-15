@@ -20,7 +20,7 @@ class NextAlarm {
   public:
     NextAlarm();
     NextAlarm(int x);
-    NextAlarm(int x, String y);
+    NextAlarm(unsigned long x, char a[]);
     NextAlarm(time_t x, time_t y, unsigned long z, char a[], char b[]);
     time_t getNextAlarm();
     time_t getInterval();
@@ -48,13 +48,15 @@ NextAlarm::NextAlarm(int x) {
   // alarmName += char(interval);
 }
 
-NextAlarm::NextAlarm(int x, String y) {
+NextAlarm::NextAlarm(unsigned long x, char a[]) {
 
-  y.toCharArray(alarmName, 30);
   prevAlarm = now();
   interval = x;
   newAlarm = prevAlarm + interval;
+  strcpy(alarmName, a);
+  makeFileName();
 }
+
 NextAlarm::NextAlarm(time_t x, time_t y, unsigned long z, char a[], char b[]) {
   newAlarm = x;
   prevAlarm = y;
@@ -115,6 +117,7 @@ SSD1306AsciiWire oled;
 
 
 // set up variables using the SD utility library functions:
+tmElements_t eventLengthTime;
 
 
 
@@ -123,9 +126,9 @@ const byte leftDir = 5;
 const byte downDir = 4;
 const byte upDir = 3;
 const byte rightDir = 2;
-const byte blue = 6;
-const byte yellow = 7;
-const byte red = 8;
+const byte blue = 8;
+const byte ret = 7;
+const byte sel = 6;
 
 const uint8_t chipSelect = 10;
 //11 used
@@ -134,6 +137,12 @@ const uint8_t chipSelect = 10;
 
 SdFat sd;
 SdFile file;
+
+char newAlarmName[25];
+int currentPoint = 0;
+boolean makingEvent = false;
+int stepNum = 0;
+
 
 void printMemory() {
 
@@ -167,15 +176,20 @@ void setup() {
   // Since the buffer is intialized with an Adafruit splashscreen
   // internally, this will display the splashscreen.
   oled.clear();
-  delay(2000);
+
   pinMode(leftDir, INPUT);
   pinMode(upDir, INPUT);
   pinMode(downDir, INPUT);
   pinMode(rightDir, INPUT);
+  pinMode(sel, INPUT);
+  pinMode(ret, INPUT);
   pinMode(blue, OUTPUT);
-  pinMode(yellow, OUTPUT);
 
-  asdf = NextAlarm(13, "didn't load any");
+  newAlarmName[0] = 'A';
+  eventLengthTime.Day = 1;
+  eventLengthTime.Month = 1;
+
+  //  asdf = NextAlarm(13, "didn't load any");
   loadFile();
   printMemory();
 
@@ -261,7 +275,7 @@ void makeNewFile() {
   File dataFile = sd.open(asdf.getFileName(), FILE_WRITE);
   if (dataFile) {
     dataFile.println(asdf.toString());
-
+    Serial.print("File created");
   } else {
     Serial.print("can't ");
     Serial.println(asdf.getFileName());
@@ -273,115 +287,265 @@ void makeNewFile() {
 
 
 
+unsigned long lastPressed = 0;
+unsigned long pressDelay = 500;
 bool firstAlarmInstance = true;
 
 void loop() {
   // put your main code here, to run repeatedly:
-
-  t = now();
-
-  int tempTimeHolder;
-  oled.home();
-
-
-
-  oled.print(hourFormat12(t));
-  oled.print(":");
-  tempTimeHolder = minute(t);
-  if (tempTimeHolder < 10)
-    oled.print("0");
-  oled.print(minute(t));
-  oled.print(":");
-  tempTimeHolder = second(t);
-  if (tempTimeHolder < 10)
-    oled.print("0");
-  oled.print(second(t));
-  oled.clearToEOL();
-
-  oled.setCursor(0, 1);
-  oled.print("Alarm ");
-  oled.print(hourFormat12(asdf.getNextAlarm()));
-  oled.print(":");
-  tempTimeHolder = minute(asdf.getNextAlarm());
-  if (tempTimeHolder < 10)
-    oled.print("0");
-  oled.print(minute(asdf.getNextAlarm()));
-  oled.print(":");
-  tempTimeHolder = second(asdf.getNextAlarm());
-  if (tempTimeHolder < 10)
-    oled.print("0");
-  oled.print(second(asdf.getNextAlarm()));
-  oled.clearToEOL();
-  oled.println();
-
-  digitalWrite(blue, false);
-  digitalWrite(yellow, false);
-  digitalWrite(red, false);
-  if (asdf.alarmReached()) {
-    if (firstAlarmInstance) {
-      oled.clear(0, oled.displayHeight(), oled.row() + 1, oled.displayRows());
-
-
-
-      firstAlarmInstance = false;
-    }
-    digitalWrite(blue, true);
-    oled.setCursor(0, 3);
-
-    oled.print(asdf.toString());
-
+  if (makingEvent) {
+    newEvent();
   }
   else {
-    digitalWrite(yellow, true);
-    oled.clear(0, oled.displayHeight(), oled.row(), oled.displayRows());
 
 
-  }
+    t = now();
 
-  ///////create a new file for each alarm. use different time alarm made for filename
-  //each line has different bit of info
-  if (digitalRead(rightDir)) {
-    printMemory();
+    int tempTimeHolder;
+    oled.home();
 
-    digitalWrite(red, true);
+
+
+    oled.print(hourFormat12(t));
+    oled.print(":");
+    tempTimeHolder = minute(t);
+    if (tempTimeHolder < 10)
+      oled.print("0");
+    oled.print(minute(t));
+    oled.print(":");
+    tempTimeHolder = second(t);
+    if (tempTimeHolder < 10)
+      oled.print("0");
+    oled.print(second(t));
+    oled.clearToEOL();
+
+    oled.setCursor(0, 1);
+    oled.print("Alarm ");
+    oled.print(hourFormat12(asdf.getNextAlarm()));
+    oled.print(":");
+    tempTimeHolder = minute(asdf.getNextAlarm());
+    if (tempTimeHolder < 10)
+      oled.print("0");
+    oled.print(minute(asdf.getNextAlarm()));
+    oled.print(":");
+    tempTimeHolder = second(asdf.getNextAlarm());
+    if (tempTimeHolder < 10)
+      oled.print("0");
+    oled.print(second(asdf.getNextAlarm()));
+    oled.clearToEOL();
+    oled.println();
+
+    digitalWrite(blue, false);
+
     if (asdf.alarmReached()) {
-      makeNewFile();
+      if (firstAlarmInstance) {
+        oled.clear(0, oled.displayHeight(), oled.row() + 1, oled.displayRows());
 
-      loadFile();
-      firstAlarmInstance = true;
+
+
+        firstAlarmInstance = false;
+      }
+      digitalWrite(blue, true);
+      oled.setCursor(0, 3);
+
+      oled.print(asdf.toString());
+
+    }
+    else {
+      oled.clear(0, oled.displayHeight(), oled.row(), oled.displayRows());
+
+
+    }
+
+    ///////create a new file for each alarm. use different time alarm made for filename
+    //each line has different bit of info
+
+
+    if (pressedRecent()) {
+
+    }
+    else {
+
+
+      if (digitalRead(rightDir)) {
+        lastPressed = millis();
+        printMemory();
+
+        if (asdf.alarmReached()) {
+          makeNewFile();
+
+          loadFile();
+          firstAlarmInstance = true;
+        }
+      }
+      if (digitalRead(sel)) {
+        lastPressed = millis();
+        makingEvent = true;
+        oled.clear();
+        oled.println("Enter name");
+        newEvent();
+      }
     }
   }
-
-
-
 
 }
 
 
+unsigned long newEventLength;
+char timePeriods[4][9] = {"", "Minutes ", "Hours ", "Days "};
+void newEvent() {
+  if (pressedRecent()) {
 
-/*
-  void testscrolltext(void) {
-  DateTime now = rtc.now();
-  display.setTextSize(2);
-  display.setTextColor(WHITE);
-  display.setCursor(10,0);
-  display.clearDisplay();
-  display.print(daysOfTheWeek[now.dayOfTheWeek()]);
-  display.println(now.minute(),DEC);
-  display.display();
-
-  display.startscrollrightDir(0x00, 0x0F);
-  delay(2000);
-  display.stopscroll();
-  delay(1000);
-  display.startscrollleftDir(0x00, 0x0F);
-  delay(2000);
-  display.stopscroll();
-  delay(1000);
-  display.startscrolldiagrightDir(0x00, 0x07);
-  delay(2000);
-  display.startscrolldiagleftDir(0x00, 0x07);
-  delay(2000);
-  display.stopscroll();
   }
-*/
+  else if (digitalRead(ret)) {
+    leaveCreation();
+    return;
+  }
+  else if (stepNum == 0) {
+    {
+      if (digitalRead(upDir)) {
+        lastPressed = millis();
+
+        if (newAlarmName[currentPoint] > 32)
+          newAlarmName[currentPoint] -= 1;
+      }
+      else if (digitalRead(downDir)) {
+        lastPressed = millis();
+
+        if (newAlarmName[currentPoint] < 126)
+          newAlarmName[currentPoint] += 1;
+
+      }
+
+      if (digitalRead(rightDir)) {
+        lastPressed = millis();
+
+        if (currentPoint < 9)
+          currentPoint++;
+        if (newAlarmName[currentPoint] == '\0') {
+          newAlarmName[currentPoint] = 'A';
+          newAlarmName[currentPoint + 1] = '\0';
+        }
+      }
+      else if (digitalRead(leftDir)) {
+        lastPressed = millis();
+
+        if (currentPoint > 0)
+          currentPoint--;
+        if (newAlarmName[currentPoint] == '\0')
+          newAlarmName[currentPoint] = 'A';
+      }
+
+
+      if (digitalRead(sel)) {
+        oled.println();
+        lastPressed = millis();
+        currentPoint = 0;
+
+        stepNum++;
+
+      }
+
+    }
+  }
+  else if (stepNum >= 1) {
+    if (digitalRead(upDir)) {
+      lastPressed = millis();
+
+      newEventLength++;
+    }
+    else if (digitalRead(downDir)) {
+      lastPressed = millis();
+      newEventLength--;
+
+    }
+
+    if (digitalRead(rightDir)) {
+      lastPressed = millis();
+      /*
+              if (currentPoint < 9)
+                currentPoint++;
+              if (line[currentPoint] == '\0')
+                line[currentPoint] = 'A';*/
+    }
+    else if (digitalRead(leftDir)) {
+      lastPressed = millis();
+      /*
+              if (currentPoint > 0)
+                currentPoint--;
+              if (line[currentPoint] == '\0')
+                line[currentPoint] = 'A';*/
+    }
+
+
+    if (digitalRead(sel)) {
+      oled.println();
+      lastPressed = millis();
+      currentPoint = 0;
+
+      if (stepNum == 1)
+        eventLengthTime.Minute += newEventLength;
+      else if (stepNum == 2)
+        eventLengthTime.Hour += newEventLength;
+      else if (stepNum == 3)
+        eventLengthTime.Day += newEventLength;
+
+      stepNum++;
+      newEventLength = 0;
+    }
+  }
+
+
+  if (stepNum == 0) {
+    for (int i = 0; i < strlen(newAlarmName); i++) {
+      if (i == currentPoint) {
+        oled.setInvertMode(true);
+      }
+      oled.print(newAlarmName[i]);
+      oled.setInvertMode(false);
+    }
+    oled.clearToEOL();
+    oled.setCol(0);
+  }
+  else if (stepNum >= 1) {
+    oled.print(timePeriods[stepNum]);
+    oled.print(newEventLength);
+    oled.clearToEOL();
+    oled.setCol(0);
+    /*
+        Serial.print(makeTime(eventLengthTime));
+        Serial.print(" ");
+        Serial.println(stepNum);
+    */
+  }
+  if (stepNum == 4) {
+    oled.println("Finished");
+    makingEvent = false;
+    asdf = NextAlarm(makeTime(eventLengthTime), newAlarmName);
+    Serial.print("name ");
+    Serial.println(newAlarmName);
+    Serial.println(newEventLength);
+
+    Serial.println(asdf.toString());
+    makeNewFile();
+    loadFile();
+    delay(2000);
+    leaveCreation();
+    return;
+
+  }
+
+}
+void leaveCreation() {
+  memset(newAlarmName, 0, sizeof newAlarmName);
+  newAlarmName[0] = 'A';
+  oled.clear();
+  makingEvent = false;
+  stepNum = 0;
+  return;
+}
+bool pressedRecent() {
+  if ((millis() - lastPressed) > pressDelay )
+    return false;
+  return true;
+}
