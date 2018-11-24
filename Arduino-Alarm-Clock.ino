@@ -6,25 +6,25 @@
 #include <DS1307RTC.h>
 
 class NextAlarm {
-  private:
-    time_t prevAlarm;
-    unsigned long interval;
-    time_t newAlarm;
-    char alarmName[30];
-    char fileName[12];
-    void makeFileName();
-  public:
-    NextAlarm();
-    NextAlarm(int x);
-    NextAlarm(unsigned long x, char a[]);
-    NextAlarm(time_t x, time_t y, unsigned long z, char a[], char b[]);
-    time_t getNextAlarm();
-    time_t getInterval();
-    char * getAlarmName();
-    char * getFileName();
-    bool alarmReached();
-    void advanceToNext();
-    String toString();
+private:
+  time_t prevAlarm;
+  unsigned long interval;
+  time_t newAlarm;
+  char alarmName[30];
+  char fileName[30];
+  void makeFileName();
+public:
+  NextAlarm();
+  NextAlarm(int x);
+  NextAlarm(unsigned long x, char a[]);
+  NextAlarm(time_t x, time_t y, unsigned long z, char a[], char b[]);
+  time_t getNextAlarm();
+  time_t getInterval();
+  char * getAlarmName();
+  char * getFileName();
+  bool alarmReached();
+  void advanceToNext();
+  String toString();
 
 };
 
@@ -121,8 +121,7 @@ const byte leftDir = 5;
 const byte sel = 6;
 const byte ret = 7;
 const byte LED = 8;
-
-const uint8_t chipSelect = 10;//for SD
+const byte chipSelect = 10;//for SD
 //11 used
 //12 used
 //13 used
@@ -130,81 +129,94 @@ const uint8_t chipSelect = 10;//for SD
 SdFat sd;
 SdFile file;
 
+unsigned long lastPressed = 0;
+unsigned long pressDelay = 500;
+
 //for creating new alarm
 unsigned long newEventLength;
 tmElements_t eventLengthTime;
 char timePeriods[4][9] = {"", "Minutes ", "Hours ", "Days "};
 char newAlarmName[25];
-int currentPoint = 0;
+byte insertionPoint = 0;
 boolean makingEvent = false;
-int stepNum = 0;
-unsigned long lastPressed = 0;
-unsigned long pressDelay = 500;
+boolean removingEvent = false;
+byte stepNum = 0;
+
+
 bool firstAlarmInstance = true;
+byte totalNumFiles=0;
 
+//removing alarm
+byte pageNum = 0;
+int8_t prevPageNum = -1;
+const byte dispPerPage = 7;
+byte fileSelection = 0;
+bool queryDeletion=false;
+byte numOnPage=0;
+char fileSelected[30];
 
-
+//line is temporary text holder for load file and delete
+char line[30];
 
 
 void loadFile() {
-  char line[25];
+
   int n;
   time_t lowestTime = 0 - 1;
+  totalNumFiles=0;
 
   // Open next file in root.  The volume working directory, vwd, is root.
   // Warning, openNext starts at the current position of sd.vwd() so a
   // rewind may be neccessary in your application.
   sd.vwd()->rewind();
   while (file.openNext(sd.vwd(), O_READ)) {
-    file.getName(line, 12);
-    if (file.isDir()) {
-      // do nothing for directories
-    }
-    else {
+    file.getName(line, 29);
+    if (!file.isDir()) {
+      totalNumFiles++;
 
-      if (!file.isOpen()) {
-        Serial.println("No File Open");
-      }
+      /*      if (!file.isOpen()) {
+      Serial.println("No File Open");
+    }*/
+    file.fgets(line, sizeof(line));
+
+    time_t tempLowest = atol(line);
+
+
+    if (lowestTime >  tempLowest)
+    {
+      lowestTime = tempLowest;
+      //     Serial.println("New low");
+      //      Serial.println(lowestTime);
+
       file.fgets(line, sizeof(line));
 
-      time_t tempLowest = atol(line);
-
-
-      if (lowestTime >  tempLowest)
-      {
-        lowestTime = tempLowest;
-        //     Serial.println("New low");
-        //      Serial.println(lowestTime);
-
-        file.fgets(line, sizeof(line));
-
-        time_t hold = atol(line);
-        file.fgets(line, sizeof(line));
-        unsigned long until = atol(line);
-        char later[30];
-        file.fgets(later, sizeof(later));
-        file.getName(line, 25);
-        asdf = NextAlarm(lowestTime, hold, until, later, line);
-      }
-      else {
-        //        Serial.println("this was not lower");
-      }
-
+      time_t hold = atol(line);
+      file.fgets(line, sizeof(line));
+      unsigned long until = atol(line);
+      char later[30];
+      file.fgets(later, sizeof(later));
+      file.getName(line, 25);
+      asdf = NextAlarm(lowestTime, hold, until, later, line);
+    }
+    else {
+      //        Serial.println("this was not lower");
     }
 
-    file.close();
   }
+
+  file.close();
+}
 }
 
 void makeNewFile() {
   if (sd.exists(asdf.getFileName())) {
     if (sd.remove(asdf.getFileName()))
     {
-      Serial.println("File " + String(asdf.getFileName() ) + " removed");
+      //    Serial.println("File " + String(asdf.getFileName() ) + " removed");
     }
   }
   else {
-    Serial.println("File " + String(asdf.getFileName()) + " file doesn't exist");
+    //    Serial.println("File " + String(asdf.getFileName()) + " file doesn't exist");
   }
 
   asdf.advanceToNext();
@@ -212,10 +224,10 @@ void makeNewFile() {
   File dataFile = sd.open(asdf.getFileName(), FILE_WRITE);
   if (dataFile) {
     dataFile.println(asdf.toString());
-    Serial.println("File created");
+    //  Serial.println("File created");
   } else {
-    Serial.print("can't ");
-    Serial.println(asdf.getFileName());
+    //    Serial.print("can't ");
+    //    Serial.println(asdf.getFileName());
 
   }
   dataFile.close();
@@ -231,11 +243,11 @@ void setup() {
   oled.clear();
 
   setSyncProvider(RTC.get);   // the function to get the time from the RTC
-  if (timeStatus() != timeSet)
-    Serial.println("Cant sync RTC");
+  /*  if (timeStatus() != timeSet)
+  Serial.println("Cant sync RTC");
   else
-    Serial.println("RTC time set");
-
+  Serial.println("RTC time set");
+  */
 
   if (!sd.begin(chipSelect, SD_SCK_MHZ(50))) {
     sd.initErrorHalt();
@@ -255,6 +267,9 @@ void setup() {
   eventLengthTime.Month = 1;
 
   loadFile();
+  if(totalNumFiles==0){
+    asdf=NextAlarm(30,"No alarms present");
+  }
 
 }
 
@@ -264,6 +279,10 @@ void loop() {
   if (makingEvent) {
     newEvent();
   }
+  else if (removingEvent) {
+    removeEvent();
+  }
+
   else {
     t = now();
 
@@ -326,6 +345,12 @@ void loop() {
         oled.println("Enter name");
         newEvent();
       }
+      if (digitalRead(ret)) {
+        lastPressed = millis();
+        removingEvent = true;
+        oled.clear();
+        removeEvent();
+      }
     }
   }
 
@@ -338,6 +363,7 @@ void newEvent() {
   if (!pressedRecent()) {
     if (digitalRead(ret)) {
       leaveCreation();
+      lastPressed = millis();
       return;
     }
     else if (stepNum == 0) {
@@ -345,34 +371,34 @@ void newEvent() {
       if (digitalRead(upDir)) {
         lastPressed = millis();
 
-        if (newAlarmName[currentPoint] > 32)
-          newAlarmName[currentPoint] -= 1;
+        if (newAlarmName[insertionPoint] > 32)
+        newAlarmName[insertionPoint] -= 1;
       }
       else if (digitalRead(downDir)) {
         lastPressed = millis();
 
-        if (newAlarmName[currentPoint] < 126)
-          newAlarmName[currentPoint] += 1;
+        if (newAlarmName[insertionPoint] < 126)
+        newAlarmName[insertionPoint] += 1;
 
       }
 
       if (digitalRead(rightDir)) {
         lastPressed = millis();
 
-        if (currentPoint < 9)
-          currentPoint++;
-        if (newAlarmName[currentPoint] == '\0') {
-          newAlarmName[currentPoint] = 'A';
-          newAlarmName[currentPoint + 1] = '\0';
+        if (insertionPoint < 9)
+        insertionPoint++;
+        if (newAlarmName[insertionPoint] == '\0') {
+          newAlarmName[insertionPoint] = 'A';
+          newAlarmName[insertionPoint + 1] = '\0';
         }
       }
       else if (digitalRead(leftDir)) {
         lastPressed = millis();
 
-        if (currentPoint > 0)
-          currentPoint--;
-        if (newAlarmName[currentPoint] == '\0')
-          newAlarmName[currentPoint] = 'A';
+        if (insertionPoint > 0)
+        insertionPoint--;
+        if (newAlarmName[insertionPoint] == '\0')
+        newAlarmName[insertionPoint] = 'A';
       }
 
 
@@ -380,7 +406,7 @@ void newEvent() {
         lastPressed = millis();
 
         oled.println();
-        currentPoint = 0;
+        insertionPoint = 0;
         stepNum++;
 
       }
@@ -402,32 +428,32 @@ void newEvent() {
       if (digitalRead(rightDir)) {
         lastPressed = millis();
         /*
-                if (currentPoint < 9)
-                  currentPoint++;
-                if (line[currentPoint] == '\0')
-                  line[currentPoint] = 'A';*/
+        if (insertionPoint < 9)
+        insertionPoint++;
+        if (line[insertionPoint] == '\0')
+        line[insertionPoint] = 'A';*/
       }
       else if (digitalRead(leftDir)) {
         lastPressed = millis();
         /*
-                if (currentPoint > 0)
-                  currentPoint--;
-                if (line[currentPoint] == '\0')
-                  line[currentPoint] = 'A';*/
+        if (insertionPoint > 0)
+        insertionPoint--;
+        if (line[insertionPoint] == '\0')
+        line[insertionPoint] = 'A';*/
       }
 
 
       if (digitalRead(sel)) {
         oled.println();
         lastPressed = millis();
-        currentPoint = 0;
+        insertionPoint = 0;
 
         if (stepNum == 1)
-          eventLengthTime.Minute += newEventLength;
+        eventLengthTime.Minute += newEventLength;
         else if (stepNum == 2)
-          eventLengthTime.Hour += newEventLength;
+        eventLengthTime.Hour += newEventLength;
         else if (stepNum == 3)
-          eventLengthTime.Day += newEventLength;
+        eventLengthTime.Day += newEventLength;
 
         stepNum++;
         newEventLength = 0;
@@ -438,7 +464,7 @@ void newEvent() {
   if (stepNum == 0) {
     //prints name
     for (int i = 0; i < strlen(newAlarmName); i++) {
-      if (i == currentPoint) {
+      if (i == insertionPoint) {
         oled.setInvertMode(true);
       }
       oled.print(newAlarmName[i]);
@@ -454,20 +480,15 @@ void newEvent() {
     oled.clearToEOL();
     oled.setCol(0);
     /*
-        Serial.print(makeTime(eventLengthTime));
-        Serial.print(" ");
-        Serial.println(stepNum);
+    Serial.print(makeTime(eventLengthTime));
+    Serial.print(" ");
+    Serial.println(stepNum);
     */
   }
   if (stepNum == 4) {
     //finishes up creation of alarm
     oled.println("Finished");
     asdf = NextAlarm(makeTime(eventLengthTime), newAlarmName);
-    Serial.print("name ");
-    Serial.println(newAlarmName);
-    Serial.println(newEventLength);
-
-    Serial.println(asdf.toString());
     makeNewFile();
     loadFile();
     delay(2000);
@@ -487,6 +508,140 @@ void leaveCreation() {
   return;
 }
 
+
+
+void removeEvent() {
+
+  if(queryDeletion){
+    deleteQuery();
+  }
+  else {
+    if (!pressedRecent()) {
+
+      oled.home();
+
+      displayFiles();
+
+
+      if (digitalRead(leftDir)) {
+        lastPressed = millis();
+        if (pageNum > 0) {
+          pageNum--;
+        }
+      }
+      if (digitalRead(rightDir)) {
+        lastPressed = millis();
+        if(pageNum<(totalNumFiles-1)/dispPerPage)
+        pageNum++;
+      }
+
+      if (digitalRead(upDir)) {
+        lastPressed = millis();
+        if (fileSelection > 0) {
+          fileSelection--;
+          prevPageNum = -1;
+        }
+      }
+      if (digitalRead(downDir)) {
+        lastPressed = millis();
+        if (fileSelection < numOnPage-1) {
+          fileSelection++;
+          prevPageNum = -1;
+        }
+      }
+
+      if(digitalRead(sel)){
+        lastPressed=millis();
+        oled.clear();
+        oled.home();
+        oled.println("Delete?");
+        oled.println(fileSelected);
+        queryDeletion=true;
+      }
+
+      if (digitalRead(ret)) {
+        lastPressed = millis();
+        leaveDeletion();
+      }
+    }
+  }
+}
+
+
+
+void deleteQuery(){
+
+  if(!pressedRecent())
+  if(digitalRead(sel)){
+    lastPressed=millis();
+    if(sd.remove(fileSelected)){
+      oled.println("File deleted");
+    }
+    else{
+      oled.println("Something went wrong");
+    }
+    loadFile();
+    delay(2000);
+    leaveDeletion();
+  }
+  if(digitalRead(ret)){
+    lastPressed=millis();
+    leaveDeletion();
+  }
+}
+
+
+void displayFiles() {
+  if (pageNum != prevPageNum) {
+    oled.clear();
+
+    numOnPage=0;
+    sd.vwd()->rewind();
+    for (int i = 0; file.openNext(sd.vwd(), O_READ) || i>((pageNum+1)*dispPerPage); )
+    {
+      if (oled.row() == fileSelection%dispPerPage) {
+        oled.setInvertMode(true);
+        file.getName(fileSelected, 25);
+      }
+
+      if (!file.isDir()) {
+        //object is not a directory
+
+        if (i >= (pageNum * dispPerPage) && i < ((pageNum + 1)*dispPerPage)) {
+          /*          if (!file.isOpen()) {
+          Serial.println("No File Open");
+        }*/
+        //first 3 lines are useless
+        file.fgets(line, sizeof(line));
+        file.fgets(line, sizeof(line));
+        file.fgets(line, sizeof(line));
+
+        //line has alarm name
+        file.fgets(line, sizeof(line));
+        oled.print(line);
+        numOnPage++;
+      }
+      i++;
+    }
+    file.close();
+    oled.setInvertMode(false);
+  }
+  prevPageNum = pageNum;
+}
+}
+
+void leaveDeletion() {
+  removingEvent = false;
+  pageNum = 0;
+  prevPageNum = -1;
+  fileSelection = 0;
+  oled.setInvertMode(false);
+  oled.clear();
+  numOnPage=0;
+  queryDeletion=false;
+  return;
+}
+
 void appendDigit(int number) {
   //appends 0 to 1 digit numbers
   if (number < 10) {
@@ -498,6 +653,6 @@ void appendDigit(int number) {
 bool pressedRecent() {
   //chescks if any buttons were recently pressed
   if ((millis() - lastPressed) > pressDelay )
-    return false;
+  return false;
   return true;
 }
